@@ -170,6 +170,66 @@ if (!isTouch && !reduceMotion) {
   });
 }
 
+/* ── 8b. Brand pills — fluid mouse repulsion ─────────── */
+(function brandPills() {
+  const wall = document.getElementById('brandWall');
+  if (!wall || isTouch || reduceMotion) return;
+  const pills = [...wall.querySelectorAll('.bw-pill')].map(el => ({
+    el,
+    x: 0, y: 0, tx: 0, ty: 0,
+    ease: 0.10 + Math.random() * 0.06   // per-pill drift, organic
+  }));
+
+  const RADIUS = 165;   // px influence
+  const MAX = 52;       // px max push
+  let px = -9999, py = -9999, active = false, raf = null;
+
+  const onMove = e => {
+    px = e.clientX; py = e.clientY;
+    active = true;
+    if (!raf) raf = requestAnimationFrame(tick);
+  };
+  const onLeave = () => { active = false; };
+
+  function tick() {
+    let alive = false;
+    for (const p of pills) {
+      if (active) {
+        const r = p.el.getBoundingClientRect();
+        // resting centre = current centre minus current displacement
+        const cx = r.left + r.width / 2 - p.x;
+        const cy = r.top + r.height / 2 - p.y;
+        const dx = cx - px, dy = cy - py;
+        const dist = Math.hypot(dx, dy);
+        if (dist < RADIUS) {
+          const f = (1 - dist / RADIUS);
+          const push = f * f * MAX;
+          const n = dist || 1;
+          p.tx = (dx / n) * push;
+          p.ty = (dy / n) * push;
+        } else { p.tx = 0; p.ty = 0; }
+      } else { p.tx = 0; p.ty = 0; }
+
+      p.x += (p.tx - p.x) * p.ease;
+      p.y += (p.ty - p.y) * p.ease;
+
+      if (Math.abs(p.x) > 0.15 || Math.abs(p.y) > 0.15 ||
+          Math.abs(p.tx) > 0.15 || Math.abs(p.ty) > 0.15) alive = true;
+
+      p.el.style.setProperty('--px', p.x.toFixed(2) + 'px');
+      p.el.style.setProperty('--py', p.y.toFixed(2) + 'px');
+    }
+    if (alive || active) { raf = requestAnimationFrame(tick); }
+    else {
+      raf = null;
+      pills.forEach(p => { p.el.style.setProperty('--px', '0px'); p.el.style.setProperty('--py', '0px'); });
+    }
+  }
+
+  window.addEventListener('mousemove', onMove, { passive: true });
+  document.addEventListener('mouseleave', onLeave);
+})();
+
 /* ── 9. Testimonials — static chat wall, no JS needed ── */
 
 /* ── 10. Active nav link on scroll (home only) ───────── */

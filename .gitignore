@@ -12,3 +12,6 @@
 # Logs / misc
 *.log
 node_modules/
+
+# Full-res source art (kept locally, not deployed)
+_originals/

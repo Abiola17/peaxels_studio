@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 182 40" role="img" aria-label="Peaxels Studio">
+  <g transform="translate(1.5,2.5) scale(0.365)" fill="none" stroke="#EE5522" stroke-width="15" stroke-linecap="square" stroke-linejoin="round">
+    <path d="M25 93 L25 12 L57 12 Q79 12 79 33 L79 40 Q79 52 58 52 L43 52 L43 71"/>
+    <path d="M25 93 L51 93 L51 71 L39 71"/>
+  </g>
+  <text x="43" y="27.5" font-family="Archivo, 'Segoe UI', Arial, sans-serif" font-size="21" font-weight="800" letter-spacing="-0.3" fill="#FFFFFF">Peaxels<tspan font-weight="500" fill="rgba(255,255,255,0.55)"> Studio</tspan></text>
+</svg>

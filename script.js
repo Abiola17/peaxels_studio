@@ -190,45 +190,43 @@ if (!isTouch && !reduceMotion) {
   sections.forEach(s => io.observe(s));
 })();
 
-/* ── 11. Projects filter ─────────────────────────────── */
-(function projectFilter() {
-  const wrap = document.getElementById('filters');
-  const grid = document.getElementById('arcGrid');
-  const empty = document.getElementById('arcEmpty');
-  if (!wrap || !grid) return;
+/* ── 11. Project brand tabs ──────────────────────────── */
+(function projectTabs() {
+  const bar = document.getElementById('tabbar');
+  if (!bar) return;
+  const tabs = [...bar.querySelectorAll('.tab')];
+  const panels = [...document.querySelectorAll('.tabpanel')];
+  const pad2 = n => (n < 10 ? '0' : '') + n;
 
-  const cards = [...grid.querySelectorAll('.acard')];
-  const buttons = [...wrap.querySelectorAll('.filter')];
+  // stamp each panel's design count
+  panels.forEach(p => {
+    const badge = p.querySelector('.panel-count');
+    if (!badge) return;
+    const n = p.querySelectorAll('.gallery figure').length;
+    badge.textContent = n ? pad2(n) : '';
+  });
 
-  const apply = cat => {
-    let shown = 0;
-    cards.forEach((card, i) => {
-      const match = cat === 'all' || card.dataset.cat === cat;
-      if (match) {
-        shown++;
-        card.classList.remove('hide');
-        card.classList.add('fade');
-        setTimeout(() => card.classList.remove('fade'), 20 + i * 35);
-      } else {
-        card.classList.add('hide');
-      }
+  const activate = (id, scroll) => {
+    const known = tabs.some(t => t.dataset.panel === id);
+    if (!known) id = tabs[0].dataset.panel;
+    tabs.forEach(t => {
+      const on = t.dataset.panel === id;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', String(on));
     });
-    if (empty) empty.hidden = shown !== 0;
+    panels.forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
+    history.replaceState(null, '', '#' + id);
+    if (scroll) {
+      const y = bar.getBoundingClientRect().top + window.scrollY
+              - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 100);
+      window.scrollTo({ top: Math.max(0, y), behavior: reduceMotion ? 'auto' : 'smooth' });
+    }
   };
 
-  buttons.forEach(btn => btn.addEventListener('click', () => {
-    buttons.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
-    btn.classList.add('active');
-    btn.setAttribute('aria-selected', 'true');
-    apply(btn.dataset.filter);
-  }));
+  tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.panel, true)));
+  addEventListener('hashchange', () => activate(location.hash.replace('#', ''), true));
 
-  // deep-link: projects.html?cat=branding
-  const q = new URLSearchParams(location.search).get('cat');
-  if (q) {
-    const b = buttons.find(x => x.dataset.filter === q);
-    if (b) b.click();
-  }
+  activate(location.hash.replace('#', ''), false);
 })();
 
 /* ── 12. Year stamp ──────────────────────────────────── */

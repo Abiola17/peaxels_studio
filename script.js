@@ -194,39 +194,107 @@ if (!isTouch && !reduceMotion) {
 (function projectTabs() {
   const bar = document.getElementById('tabbar');
   if (!bar) return;
+  const inner = bar.querySelector('.tabbar-inner');
   const tabs = [...bar.querySelectorAll('.tab')];
   const panels = [...document.querySelectorAll('.tabpanel')];
+  if (!inner || !tabs.length) return;
+
   const pad2 = n => (n < 10 ? '0' : '') + n;
 
-  // stamp each panel's design count
+  let indicator = inner.querySelector('.tab-indicator');
+  if (!indicator) {
+    indicator = document.createElement('span');
+    indicator.className = 'tab-indicator';
+    indicator.setAttribute('aria-hidden', 'true');
+    inner.prepend(indicator);
+  }
+  indicator.classList.add('no-anim');
+
+  // stamp design counts (tab chips + panel numerals) and stagger indices
   panels.forEach(p => {
-    const badge = p.querySelector('.panel-count');
-    if (!badge) return;
     const n = p.querySelectorAll('.gallery figure').length;
-    badge.textContent = n ? pad2(n) : '';
+    const badge = p.querySelector('.panel-count');
+    if (badge) badge.textContent = n ? pad2(n) : '';
+    p.querySelectorAll('.gallery').forEach(g => {
+      [...g.querySelectorAll('figure')].forEach((f, i) => f.style.setProperty('--i', i));
+    });
+    const tab = tabs.find(t => t.dataset.panel === p.id.replace('panel-', ''));
+    const tc = tab && tab.querySelector('.tab-count');
+    if (tc) tc.textContent = n ? pad2(n) : '';
   });
 
-  const activate = (id, scroll) => {
-    const known = tabs.some(t => t.dataset.panel === id);
-    if (!known) id = tabs[0].dataset.panel;
+  const place = tab => {
+    if (!tab) return;
+    indicator.style.setProperty('--x', tab.offsetLeft + 'px');
+    indicator.style.setProperty('--w', tab.offsetWidth + 'px');
+  };
+
+  let booted = false;
+
+  const activate = (id, scrollPage) => {
+    if (!tabs.some(t => t.dataset.panel === id)) id = tabs[0].dataset.panel;
+    let active = tabs[0];
     tabs.forEach(t => {
       const on = t.dataset.panel === id;
+      if (on) active = t;
       t.classList.toggle('active', on);
       t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
     });
-    panels.forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
+    panels.forEach(p => {
+      const on = p.id === 'panel-' + id;
+      p.classList.toggle('active', on);
+      if (on) p.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+    });
+    place(active);
+    if (booted) active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
     history.replaceState(null, '', '#' + id);
-    if (scroll) {
+    if (scrollPage) {
       const y = bar.getBoundingClientRect().top + window.scrollY
               - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 100);
       window.scrollTo({ top: Math.max(0, y), behavior: reduceMotion ? 'auto' : 'smooth' });
     }
   };
 
-  tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.panel, true)));
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => activate(t.dataset.panel, true));
+    t.addEventListener('keydown', e => {
+      let j = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') j = (i + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') j = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') j = 0;
+      else if (e.key === 'End') j = tabs.length - 1;
+      if (j === null) return;
+      e.preventDefault();
+      tabs[j].focus();
+      activate(tabs[j].dataset.panel, false);
+    });
+  });
+
   addEventListener('hashchange', () => activate(location.hash.replace('#', ''), true));
 
+  let rz;
+  addEventListener('resize', () => {
+    clearTimeout(rz);
+    indicator.classList.add('no-anim');
+    place(tabs.find(t => t.classList.contains('active')));
+    rz = setTimeout(() => indicator.classList.remove('no-anim'), 120);
+  });
+
   activate(location.hash.replace('#', ''), false);
+  requestAnimationFrame(() => {
+    place(tabs.find(t => t.classList.contains('active')));
+    requestAnimationFrame(() => { indicator.classList.remove('no-anim'); booted = true; });
+  });
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      indicator.classList.add('no-anim');
+      place(tabs.find(t => t.classList.contains('active')));
+      requestAnimationFrame(() => indicator.classList.remove('no-anim'));
+    });
+  }
+  addEventListener('load', () => place(tabs.find(t => t.classList.contains('active'))));
 })();
 
 /* ── 12. Year stamp ──────────────────────────────────── */

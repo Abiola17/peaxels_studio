@@ -6,6 +6,9 @@
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isTouch = window.matchMedia('(hover: none)').matches;
+document.body.classList.toggle('is-touch', isTouch);
+
+let openLightbox = null; // set by the lightbox controller (section 12), used by gallery + work-card click handlers
 
 /* ── 1. Custom cursor ─────────────────────────────────── */
 (function cursor() {
@@ -210,7 +213,7 @@ if (!isTouch && !reduceMotion) {
   }
   indicator.classList.add('no-anim');
 
-  // stamp design counts (tab chips + panel numerals) and stagger indices
+  // stamp panel numerals and stagger indices
   panels.forEach(p => {
     const n = p.querySelectorAll('.gallery figure').length;
     const badge = p.querySelector('.panel-count');
@@ -218,9 +221,6 @@ if (!isTouch && !reduceMotion) {
     p.querySelectorAll('.gallery').forEach(g => {
       [...g.querySelectorAll('figure')].forEach((f, i) => f.style.setProperty('--i', i));
     });
-    const tab = tabs.find(t => t.dataset.panel === p.id.replace('panel-', ''));
-    const tc = tab && tab.querySelector('.tab-count');
-    if (tc) tc.textContent = n ? pad2(n) : '';
   });
 
   const place = tab => {
@@ -297,7 +297,212 @@ if (!isTouch && !reduceMotion) {
   addEventListener('load', () => place(tabs.find(t => t.classList.contains('active'))));
 })();
 
-/* ── 12. Year stamp ──────────────────────────────────── */
+/* ── 12. Lightbox — zoomable design viewer ───────────── */
+(function lightbox() {
+  const root = document.getElementById('lightbox');
+  if (!root) return;
+  const frame    = document.getElementById('lbFrame');
+  const img      = document.getElementById('lbImg');
+  const caption  = document.getElementById('lbCaption');
+  const countEl  = document.getElementById('lbCount');
+  const zoomEl   = document.getElementById('lbZoomLevel');
+  const prevBtn  = document.getElementById('lbPrev');
+  const nextBtn  = document.getElementById('lbNext');
+  const zoomIn   = document.getElementById('lbZoomIn');
+  const zoomOut  = document.getElementById('lbZoomOut');
+  const resetBtn = document.getElementById('lbReset');
+  const closeBtn = document.getElementById('lbClose');
+
+  const ZMIN = 1, ZMAX = 4, ZSTEP = .5;
+  let items = [], index = 0, z = 1, px = 0, py = 0;
+  let dragging = false, dragStart = null, panStart = null, pinchStart = null;
+  let lastFocus = null;
+
+  function applyTransform() {
+    img.style.setProperty('--z', z);
+    img.style.setProperty('--px', px + 'px');
+    img.style.setProperty('--py', py + 'px');
+    zoomEl.textContent = Math.round(z * 100) + '%';
+    frame.classList.toggle('zoomed', z > 1);
+  }
+
+  function clampPan() {
+    const maxX = (img.offsetWidth * (z - 1)) / 2 + 60;
+    const maxY = (img.offsetHeight * (z - 1)) / 2 + 60;
+    px = Math.max(-maxX, Math.min(maxX, px));
+    py = Math.max(-maxY, Math.min(maxY, py));
+  }
+
+  function setZoom(next) {
+    next = Math.round(Math.max(ZMIN, Math.min(ZMAX, next)) * 100) / 100;
+    if (next === z) return;
+    z = next;
+    if (z === ZMIN) { px = 0; py = 0; }
+    clampPan();
+    applyTransform();
+  }
+
+  function render() {
+    const it = items[index];
+    if (!it) return;
+    img.src = it.src;
+    img.alt = it.alt || '';
+    caption.textContent = it.caption || '';
+    const multi = items.length > 1;
+    countEl.textContent = multi ? `${String(index + 1).padStart(2, '0')} / ${String(items.length).padStart(2, '0')}` : '';
+    prevBtn.hidden = !multi;
+    nextBtn.hidden = !multi;
+    z = 1; px = 0; py = 0;
+    applyTransform();
+  }
+
+  function open(list, startIndex) {
+    if (!list || !list.length) return;
+    items = list;
+    index = startIndex || 0;
+    lastFocus = document.activeElement;
+    render();
+    root.classList.add('open');
+    root.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    closeBtn.focus();
+  }
+
+  function close() {
+    root.classList.remove('open');
+    root.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  function go(delta) {
+    if (items.length < 2) return;
+    index = (index + delta + items.length) % items.length;
+    render();
+  }
+
+  root.querySelectorAll('[data-lb-close]').forEach(el => el.addEventListener('click', close));
+  closeBtn.addEventListener('click', close);
+  prevBtn.addEventListener('click', () => go(-1));
+  nextBtn.addEventListener('click', () => go(1));
+  zoomIn.addEventListener('click', () => setZoom(z + ZSTEP));
+  zoomOut.addEventListener('click', () => setZoom(z - ZSTEP));
+  resetBtn.addEventListener('click', () => setZoom(1));
+
+  img.addEventListener('dblclick', e => { e.preventDefault(); setZoom(z > 1 ? 1 : 2.5); });
+  img.addEventListener('click', e => {
+    e.stopPropagation();
+    if (z === 1) setZoom(2.5);
+  });
+
+  frame.addEventListener('wheel', e => {
+    e.preventDefault();
+    setZoom(z + (e.deltaY < 0 ? ZSTEP : -ZSTEP));
+  }, { passive: false });
+
+  frame.addEventListener('mousedown', e => {
+    if (z === 1) return;
+    dragging = true;
+    frame.classList.add('dragging');
+    dragStart = { x: e.clientX, y: e.clientY };
+    panStart = { x: px, y: py };
+  });
+  addEventListener('mousemove', e => {
+    if (!dragging) return;
+    px = panStart.x + (e.clientX - dragStart.x);
+    py = panStart.y + (e.clientY - dragStart.y);
+    clampPan();
+    applyTransform();
+  });
+  addEventListener('mouseup', () => { dragging = false; frame.classList.remove('dragging'); });
+
+  function touchDist(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); }
+
+  frame.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      pinchStart = { dist: touchDist(e.touches), z };
+    } else if (e.touches.length === 1 && z > 1) {
+      dragging = true;
+      dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      panStart = { x: px, y: py };
+    }
+  }, { passive: true });
+  frame.addEventListener('touchmove', e => {
+    if (e.touches.length === 2 && pinchStart) {
+      e.preventDefault();
+      setZoom(pinchStart.z * (touchDist(e.touches) / pinchStart.dist));
+    } else if (dragging && e.touches.length === 1) {
+      e.preventDefault();
+      px = panStart.x + (e.touches[0].clientX - dragStart.x);
+      py = panStart.y + (e.touches[0].clientY - dragStart.y);
+      clampPan();
+      applyTransform();
+    }
+  }, { passive: false });
+  frame.addEventListener('touchend', () => { dragging = false; pinchStart = null; frame.classList.remove('dragging'); });
+
+  addEventListener('keydown', e => {
+    if (!root.classList.contains('open')) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowLeft') go(-1);
+    else if (e.key === 'ArrowRight') go(1);
+    else if (e.key === '+' || e.key === '=') setZoom(z + ZSTEP);
+    else if (e.key === '-') setZoom(z - ZSTEP);
+    else if (e.key === '0') setZoom(1);
+  });
+
+  openLightbox = open;
+})();
+
+/* ── 13. Wire galleries + work cards into the lightbox ─ */
+(function lightboxSources() {
+  if (!document.getElementById('lightbox')) return;
+
+  // Project galleries — each .gallery is its own browsable set
+  document.addEventListener('click', e => {
+    const a = e.target.closest('.gallery a');
+    if (!a) return;
+    const gallery = a.closest('.gallery');
+    if (!gallery) return;
+    e.preventDefault();
+    const figs = [...gallery.querySelectorAll('figure')];
+    const brandName = a.closest('.tabpanel')?.querySelector('.brand-name')?.textContent.trim() || '';
+    const items = figs.map((fig, i) => {
+      const link = fig.querySelector('a');
+      const im = fig.querySelector('img');
+      const cap = fig.querySelector('figcaption');
+      return {
+        src: link ? link.getAttribute('href') : im.src,
+        alt: im ? im.alt : '',
+        caption: cap ? cap.textContent.trim() : (brandName ? `${brandName} — ${String(i + 1).padStart(2, '0')}` : '')
+      };
+    });
+    const idx = figs.indexOf(a.closest('figure'));
+    if (openLightbox) openLightbox(items, idx);
+  });
+
+  // Home page featured work cards
+  const cards = [...document.querySelectorAll('.wcard')];
+  if (cards.length) {
+    const cardItems = cards.map(card => {
+      const im = card.querySelector('.wcard-art img');
+      const h3 = card.querySelector('.wcard-meta h3')?.textContent.trim() || '';
+      const sub = card.querySelector('.wcard-meta span')?.textContent.trim() || '';
+      return { src: im ? im.src : '', alt: im ? im.alt : '', caption: [h3, sub].filter(Boolean).join(' · ') };
+    });
+    cards.forEach((card, i) => {
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', `View ${cardItems[i].caption || 'design'} full size`);
+      card.addEventListener('click', () => { if (openLightbox) openLightbox(cardItems, i); });
+      card.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (openLightbox) openLightbox(cardItems, i); }
+      });
+    });
+  }
+})();
+
+/* ── 14. Year stamp ──────────────────────────────────── */
 document.querySelectorAll('#yr').forEach(el => el.textContent = new Date().getFullYear());
 
 console.log('%c Peaxels Studio — Ayeelagbe Peace ', 'background:#EE5522;color:#fff;padding:4px 12px;font-weight:700;font-size:12px;');
